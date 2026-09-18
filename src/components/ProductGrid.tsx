@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Product } from '@/types/product';
 import { ProductCard } from './ProductCard';
-import { SearchX, SlidersHorizontal, ArrowUpDown, Tag } from 'lucide-react';
+import { SearchX, ArrowUpDown, Tag } from 'lucide-react';
 
 interface ProductGridProps {
   products: Product[];
@@ -24,14 +24,11 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
 }) => {
   const [sortBy, setSortBy] = useState<'default' | 'discount' | 'price-low' | 'price-high'>('default');
 
-  // Filter products by search & category
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
-      // Category match
       if (selectedCategory && product.category.toLowerCase() !== selectedCategory.toLowerCase()) {
         return false;
       }
-      // Search match
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchesName = product.name.toLowerCase().includes(query);
@@ -45,7 +42,6 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
     });
   }, [products, searchQuery, selectedCategory]);
 
-  // Sort products
   const sortedProducts = useMemo(() => {
     const list = [...filteredProducts];
     if (sortBy === 'discount') {
@@ -61,28 +57,25 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
   }, [filteredProducts, sortBy]);
 
   return (
-    <section id="deals" className="py-12 bg-white">
+    <section id="deals" className="py-8 sm:py-12 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Header Bar */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4 pb-6 border-b border-gray-100">
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-6 sm:mb-8 gap-4 pb-4 sm:pb-6 border-b border-gray-100">
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 text-rose-800 text-xs font-bold mb-2">
               <Tag className="w-3.5 h-3.5 text-rose-600" />
               <span>UP TO 70% OFF</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
+            <h2 className="text-xl sm:text-3xl font-black text-gray-900 tracking-tight">
               TODAY'S GREAT DEALS
             </h2>
-            <p className="text-sm text-gray-600 font-medium">
+            <p className="text-xs sm:text-sm text-gray-600 font-medium">
               Handpicked products with prices worth checking out.
             </p>
           </div>
 
-          {/* Controls: Active filter info + Sort dropdown */}
           <div className="flex flex-wrap items-center gap-3">
-            
-            {/* Sort Dropdown */}
             <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs sm:text-sm">
               <ArrowUpDown className="w-4 h-4 text-gray-500 shrink-0" />
               <span className="text-gray-500 font-medium hidden sm:inline">Sort by:</span>
@@ -98,7 +91,6 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
               </select>
             </div>
 
-            {/* Active Filters Pill */}
             {(selectedCategory || searchQuery) && (
               <button
                 onClick={onClearFilters}
@@ -110,7 +102,6 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
           </div>
         </div>
 
-        {/* Error Alert State */}
         {error && (
           <div className="my-8 p-6 bg-rose-50 border border-rose-200 rounded-2xl text-center space-y-2">
             <h3 className="text-base font-bold text-rose-900">Catalogue Error</h3>
@@ -124,23 +115,21 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
           </div>
         )}
 
-        {/* Loading Skeleton */}
         {isLoading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-              <div key={i} className="bg-gray-100 rounded-2xl h-80 animate-pulse" />
+              <div key={i} className="bg-gray-100 rounded-2xl h-72 animate-pulse" />
             ))}
           </div>
         )}
 
-        {/* Empty State */}
         {!isLoading && !error && sortedProducts.length === 0 && (
           <div className="py-16 text-center max-w-md mx-auto space-y-4">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto text-gray-400">
               <SearchX className="w-8 h-8" />
             </div>
             <h3 className="text-xl font-extrabold text-gray-900">NO DEALS FOUND</h3>
-            <p className="text-sm text-gray-500">
+            <p className="text-xs sm:text-sm text-gray-500">
               Try another product or category search. We couldn't find matches for{" "}
               {searchQuery ? `"${searchQuery}"` : selectedCategory ? `category "${selectedCategory}"` : 'your query'}.
             </p>
@@ -153,9 +142,9 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
           </div>
         )}
 
-        {/* Product Grid */}
+        {/* 2-Column Mobile & 4-Column Desktop Product Grid */}
         {!isLoading && !error && sortedProducts.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
             {sortedProducts.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}

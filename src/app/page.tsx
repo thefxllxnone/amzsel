@@ -13,25 +13,35 @@ import { Footer } from '@/components/Footer';
 
 export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  // Fetch catalogue from API
-  const fetchProducts = async () => {
+  // Fetch catalogue and categories from API
+  const fetchData = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/products');
-      const data = await res.json();
+      const [prodRes, catRes] = await Promise.all([
+        fetch('/api/products'),
+        fetch('/api/categories')
+      ]);
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to fetch catalogue from server');
+      const prodData = await prodRes.json();
+      const catData = await catRes.json();
+
+      if (!prodRes.ok || !prodData.success) {
+        throw new Error(prodData.error || 'Failed to fetch catalogue from server');
       }
 
-      setProducts(data.data || []);
+      setProducts(prodData.data || []);
+
+      if (catRes.ok && catData.success) {
+        setCategories(catData.data || []);
+      }
     } catch (err: any) {
       console.error('Error loading products on homepage:', err);
       setError(err?.message || 'Catalogue could not be loaded.');
@@ -41,7 +51,7 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    fetchProducts();
+    fetchData();
   }, []);
 
   // Compute product counts per category
@@ -69,7 +79,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-white overflow-x-hidden max-w-full">
       {/* Top Announcement Bar */}
       <AnnouncementBar />
 
@@ -91,12 +101,13 @@ export default function HomePage() {
 
         {/* Categories Bar */}
         <CategoryNav
+          categories={categories}
           selectedCategory={selectedCategory}
           onSelectCategory={setSelectedCategory}
           productCounts={productCounts}
         />
 
-        {/* Featured Deals Section (only when no filter active or initial view) */}
+        {/* Featured Deals Section */}
         {!selectedCategory && !searchQuery && (
           <FeaturedSection products={products} />
         )}

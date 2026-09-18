@@ -2,18 +2,20 @@ import fs from 'fs';
 import path from 'path';
 import { Product } from '@/types/product';
 import { INITIAL_PRODUCTS } from '@/data/initialProducts';
+import { SITE_CONFIG } from '@/config/site';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
-const FILE_PATH = path.join(DATA_DIR, 'products.json');
+const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
+const CATEGORIES_FILE = path.join(DATA_DIR, 'categories.json');
 
-// Ensure data directory exists locally
+const DEFAULT_CATEGORIES: string[] = [...SITE_CONFIG.categories];
+
 function ensureDataDirExists() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 }
 
-// Netlify Blob helper (lazy loaded if in Netlify env)
 async function getNetlifyBlobStore() {
   if (process.env.NETLIFY || process.env.NETLIFY_BLOBS_CONTEXT) {
     try {
@@ -29,6 +31,10 @@ async function getNetlifyBlobStore() {
   return null;
 }
 
+// ==========================================
+// PRODUCTS PERSISTENCE
+// ==========================================
+
 export async function getProducts(): Promise<Product[]> {
   try {
     const blobStore = await getNetlifyBlobStore();
@@ -37,19 +43,17 @@ export async function getProducts(): Promise<Product[]> {
       if (rawData && Array.isArray(rawData) && rawData.length > 0) {
         return rawData as Product[];
       }
-      // Seed blob store with initial products
       await blobStore.setJSON('products', INITIAL_PRODUCTS);
       return INITIAL_PRODUCTS;
     }
 
-    // Local file fallback
     ensureDataDirExists();
-    if (!fs.existsSync(FILE_PATH)) {
-      fs.writeFileSync(FILE_PATH, JSON.stringify(INITIAL_PRODUCTS, null, 2), 'utf-8');
+    if (!fs.existsSync(PRODUCTS_FILE)) {
+      fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(INITIAL_PRODUCTS, null, 2), 'utf-8');
       return INITIAL_PRODUCTS;
     }
 
-    const fileContent = fs.readFileSync(FILE_PATH, 'utf-8');
+    const fileContent = fs.readFileSync(PRODUCTS_FILE, 'utf-8');
     const parsed = JSON.parse(fileContent);
     if (!Array.isArray(parsed)) {
       throw new Error('Invalid products JSON structure in storage file');
@@ -57,7 +61,7 @@ export async function getProducts(): Promise<Product[]> {
     return parsed;
   } catch (error: any) {
     console.error('CRITICAL: Failed to load products from persistent storage:', error);
-    throw new Error(`Catalogue Storage Read Failure: ${error?.message || 'Unknown error'}`);
+    throw new Error(`Catalogue Read Failure: ${error?.message || 'Unknown error'}`);
   }
 }
 
@@ -73,12 +77,11 @@ export async function saveProducts(products: Product[]): Promise<void> {
       return;
     }
 
-    // Local file save
     ensureDataDirExists();
-    fs.writeFileSync(FILE_PATH, JSON.stringify(products, null, 2), 'utf-8');
+    fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(products, null, 2), 'utf-8');
   } catch (error: any) {
     console.error('CRITICAL: Failed to save products to persistent storage:', error);
-    throw new Error(`Catalogue Storage Write Failure: ${error?.message || 'Unknown error'}`);
+    throw new Error(`Catalogue Write Failure: ${error?.message || 'Unknown error'}`);
   }
 }
 
@@ -91,7 +94,6 @@ export async function createProduct(productData: Omit<Product, 'id' | 'createdAt
   const products = await getProducts();
   const now = new Date().toISOString();
   
-  // Calculate discount percentage if original price > current price
   const discount = productData.originalPrice > productData.currentPrice
     ? Math.round(((productData.originalPrice - productData.currentPrice) / productData.originalPrice) * 100)
     : productData.discountPercent || 0;
@@ -146,4 +148,111 @@ export async function deleteProduct(id: string): Promise<boolean> {
   }
   await saveProducts(filtered);
   return true;
+}
+
+// ==========================================
+// CATEGORIES PERSISTENCE
+// ==========================================
+
+export async function getCategories(): Promise<string[]> {
+  try {
+    const blobStore = await getNetlifyBlobStore();
+    if (blobStore) {
+      const raw = await blobStore.get('categories', { type: 'json' });
+      if (raw && Array.isArray(raw) && raw.length > 0) {
+        return raw as string[];
+      }
+      await blobStore.setJSON('categories', DEFAULT_CATEGORIES);
+      return DEFAULT_CATEGORIES;
+    }
+
+    ensureDataDirExists();
+    if (!fs.existsSync(CATEGORIES_FILE)) {
+      fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(DEFAULT_CATEGORIES, null, 2), 'utf-8');
+      return DEFAULT_CATEGORIES;
+    }
+
+    const content = fs.readFileSync(CATEGORIES_FILE, 'utf-8');
+    const parsed = JSON.parse(content);
+    if (!Array.isArray(parsed)) {
+      return DEFAULT_CATEGORIES;
+    }
+    return parsed;
+  } catch (error) {
+    console.error('Failed to read categories from storage:', error);
+    return DEFAULT_CATEGORIES;
+  }
+}
+
+export async function saveCategories(categories: string[]): Promise<void> {
+  try {
+    const blobStore = await getNetlifyBlobStore();
+    if (blobStore) {
+      await blobStore.setJSON('categories', categories);
+      return;
+    }
+
+    ensureDataDirExists();
+    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categories, null, 2), 'utf-8');
+  } catch (error: any) {
+    console.error('Failed to save categories:', error);
+    throw new Error(`Category Write Failure: ${error?.message || 'Unknown error'}`);
+  }
+}
+
+export async function addCategory(categoryName: string): Promise<string[]> {
+  const trimmed = categoryName.trim();
+  if (!trimmed) throw new Error('Category name cannot be empty');
+
+  const categories = await getCategories();
+  if (categories.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+    throw new Error(`Category "${trimmed}" already exists`);
+  }
+
+  categories.push(trimmed);
+  await saveCategories(categories);
+  return categories;
+}
+
+export async function renameCategory(oldName: string, newName: string): Promise<string[]> {
+  const trimmedNew = newName.trim();
+  if (!trimmedNew) throw new Error('New category name cannot be empty');
+
+  const categories = await getCategories();
+  const index = categories.findIndex(c => c.toLowerCase() === oldName.toLowerCase());
+  if (index === -1) {
+    throw new Error(`Category "${oldName}" not found`);
+  }
+
+  categories[index] = trimmedNew;
+  await saveCategories(categories);
+
+  // Update all products in this category to use new category name!
+  const products = await getProducts();
+  let updatedCount = 0;
+  const updatedProducts = products.map(p => {
+    if (p.category.toLowerCase() === oldName.toLowerCase()) {
+      updatedCount++;
+      return { ...p, category: trimmedNew, updatedAt: new Date().toISOString() };
+    }
+    return p;
+  });
+
+  if (updatedCount > 0) {
+    await saveProducts(updatedProducts);
+  }
+
+  return categories;
+}
+
+export async function deleteCategory(categoryName: string): Promise<string[]> {
+  const categories = await getCategories();
+  const filtered = categories.filter(c => c.toLowerCase() !== categoryName.toLowerCase());
+  
+  if (filtered.length === categories.length) {
+    throw new Error(`Category "${categoryName}" not found`);
+  }
+
+  await saveCategories(filtered);
+  return filtered;
 }

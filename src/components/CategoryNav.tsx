@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { SITE_CONFIG } from '@/config/site';
 import { 
   Tv, 
   Sparkles, 
@@ -12,33 +11,38 @@ import {
   SlidersHorizontal, 
   Sun, 
   Bike, 
-  Grid
+  Grid,
+  Tag
 } from 'lucide-react';
 
 interface CategoryNavProps {
+  categories: string[];
   selectedCategory: string | null;
   onSelectCategory: (category: string | null) => void;
   productCounts: Record<string, number>;
 }
 
-// Icon mapping for 9 categories
+// Icon mapping fallback helper
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  "Electronic": <Tv className="w-4 h-4" />,
-  "Personal Care": <Sparkles className="w-4 h-4" />,
-  "Crockery": <Coffee className="w-4 h-4" />,
-  "Toys": <Gamepad2 className="w-4 h-4" />,
-  "Baby Toys": <Baby className="w-4 h-4" />,
-  "Cars": <Car className="w-4 h-4" />,
-  "Sliders": <SlidersHorizontal className="w-4 h-4" />,
-  "Swing": <Sun className="w-4 h-4" />,
-  "Bikes": <Bike className="w-4 h-4" />,
+  "Electronic": <Tv className="w-4 h-4 shrink-0" />,
+  "Personal Care": <Sparkles className="w-4 h-4 shrink-0" />,
+  "Crockery": <Coffee className="w-4 h-4 shrink-0" />,
+  "Toys": <Gamepad2 className="w-4 h-4 shrink-0" />,
+  "Baby Toys": <Baby className="w-4 h-4 shrink-0" />,
+  "Cars": <Car className="w-4 h-4 shrink-0" />,
+  "Sliders": <SlidersHorizontal className="w-4 h-4 shrink-0" />,
+  "Swing": <Sun className="w-4 h-4 shrink-0" />,
+  "Bikes": <Bike className="w-4 h-4 shrink-0" />,
 };
 
 export const CategoryNav: React.FC<CategoryNavProps> = ({
+  categories,
   selectedCategory,
   onSelectCategory,
   productCounts,
 }) => {
+  const totalCount = Object.values(productCounts).reduce((a, b) => a + b, 0);
+
   return (
     <section id="categories" className="py-8 bg-gray-50 border-y border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -47,7 +51,7 @@ export const CategoryNav: React.FC<CategoryNavProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-2">
           <div>
             <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight">
-              Explore Categories
+              EXPLORE CATEGORIES
             </h2>
             <p className="text-xs sm:text-sm text-gray-500 font-medium">
               Select a category to filter Amazon deals
@@ -57,7 +61,7 @@ export const CategoryNav: React.FC<CategoryNavProps> = ({
           {selectedCategory && (
             <button
               onClick={() => onSelectCategory(null)}
-              className="text-xs font-semibold text-brand-600 hover:text-brand-700 underline self-start sm:self-auto"
+              className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg transition-colors self-start sm:self-auto"
             >
               Clear Category Filter
             </button>
@@ -65,52 +69,60 @@ export const CategoryNav: React.FC<CategoryNavProps> = ({
         </div>
 
         {/* 
-          Category Buttons Layout:
-          Responsive Grid on mobile & desktop that wraps cleanly.
-          NO HORIZONTAL PAGE OVERFLOW.
+          UNCOMPRESSED RESPONSIVE CATEGORY BUTTONS
+          Uses flex-wrap layout on desktop and grid/wrap on mobile.
+          FULL NAMES ALWAYS DISPLAY WITHOUT TRUNCATION (No "Ele...", "Cro...")
         */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-2 sm:gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           
-          {/* ALL CATEGORIES BUTTON */}
+          {/* ALL DEALS BUTTON */}
           <button
             onClick={() => onSelectCategory(null)}
-            className={`flex items-center justify-center sm:justify-start gap-2 p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-bold transition-all ${
+            className={`inline-flex items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl border text-xs sm:text-sm font-bold whitespace-nowrap transition-all shadow-2xs ${
               selectedCategory === null
-                ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
-                : 'bg-white text-gray-700 border-gray-200 hover:border-brand-300 hover:bg-orange-50/50'
+                ? 'bg-brand-600 text-white border-brand-600 shadow-md transform scale-[1.02]'
+                : 'bg-white text-gray-800 border-gray-200 hover:border-brand-400 hover:bg-orange-50/50'
             }`}
           >
             <Grid className="w-4 h-4 shrink-0" />
-            <span className="truncate">All Deals</span>
+            <span>ALL DEALS</span>
+            <span
+              className={`text-[11px] px-2 py-0.5 rounded-full font-extrabold ml-1 ${
+                selectedCategory === null
+                  ? 'bg-white/20 text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              {totalCount}
+            </span>
           </button>
 
-          {/* 9 CATEGORIES */}
-          {SITE_CONFIG.categories.map((catName) => {
-            const isSelected = selectedCategory === catName;
+          {/* DYNAMIC CATEGORY BUTTONS */}
+          {categories.map((catName) => {
+            const isSelected = selectedCategory?.toLowerCase() === catName.toLowerCase();
             const count = productCounts[catName] || 0;
+            const icon = CATEGORY_ICONS[catName] || <Tag className="w-4 h-4 shrink-0" />;
 
             return (
               <button
                 key={catName}
                 onClick={() => onSelectCategory(catName)}
-                className={`flex items-center justify-between gap-1.5 p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-semibold transition-all ${
+                className={`inline-flex items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl border text-xs sm:text-sm font-bold whitespace-nowrap transition-all shadow-2xs ${
                   isSelected
-                    ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-brand-300 hover:bg-orange-50/50'
+                    ? 'bg-brand-600 text-white border-brand-600 shadow-md transform scale-[1.02]'
+                    : 'bg-white text-gray-800 border-gray-200 hover:border-brand-400 hover:bg-orange-50/50'
                 }`}
               >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className={`shrink-0 ${isSelected ? 'text-white' : 'text-brand-600'}`}>
-                    {CATEGORY_ICONS[catName] || <Grid className="w-4 h-4" />}
-                  </span>
-                  <span className="truncate">{catName}</span>
-                </div>
+                <span className={isSelected ? 'text-white' : 'text-brand-600'}>
+                  {icon}
+                </span>
+                <span className="capitalize">{catName}</span>
                 {count > 0 && (
                   <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
+                    className={`text-[11px] px-2 py-0.5 rounded-full font-extrabold ml-1 ${
                       isSelected
                         ? 'bg-white/20 text-white'
-                        : 'bg-gray-100 text-gray-500'
+                        : 'bg-gray-100 text-gray-600'
                     }`}
                   >
                     {count}
