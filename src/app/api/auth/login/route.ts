@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { SITE_CONFIG } from '@/config/site';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function POST(request: Request) {
   try {
     const { username, password } = await request.json();
@@ -9,7 +12,6 @@ export async function POST(request: Request) {
     const validPassword = SITE_CONFIG.admin.password;
 
     if (username === validUsername && password === validPassword) {
-      // Return simple session token or success response
       return NextResponse.json({
         success: true,
         token: `token-${Date.now()}-admin-auth-valid`,

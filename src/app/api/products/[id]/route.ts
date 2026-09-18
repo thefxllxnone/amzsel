@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { updateProduct, deleteProduct, getProductById } from '@/lib/storage';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function PUT(
   request: Request,
   { params }: { params: { id: string } }

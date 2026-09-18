@@ -8,16 +8,24 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
 const CATEGORIES_FILE = path.join(DATA_DIR, 'categories.json');
 
+// In-memory fallback cache for read-only serverless environments if disk/blob isn't available
+let MEMORY_PRODUCTS_CACHE: Product[] | null = null;
+let MEMORY_CATEGORIES_CACHE: string[] | null = null;
+
 const DEFAULT_CATEGORIES: string[] = [...SITE_CONFIG.categories];
 
 function ensureDataDirExists() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (e) {
+    // Read-only filesystem in serverless functions (e.g. Netlify/Vercel lambda)
   }
 }
 
 async function getNetlifyBlobStore() {
-  if (process.env.NETLIFY || process.env.NETLIFY_BLOBS_CONTEXT) {
+  if (process.env.NETLIFY || process.env.NETLIFY_BLOBS_CONTEXT || process.env.NETLIFY_SITE_ID) {
     try {
       const { getStore } = await import('@netlify/blobs');
       return getStore({
@@ -25,7 +33,7 @@ async function getNetlifyBlobStore() {
         consistency: 'strong'
       });
     } catch (err) {
-      console.warn('Netlify Blobs import warning:', err);
+      console.warn('Netlify Blobs init notice:', err);
     }
   }
   return null;
@@ -37,31 +45,48 @@ async function getNetlifyBlobStore() {
 
 export async function getProducts(): Promise<Product[]> {
   try {
+    // 1. Try Netlify Blob Store if deployed
     const blobStore = await getNetlifyBlobStore();
     if (blobStore) {
-      const rawData = await blobStore.get('products', { type: 'json' });
-      if (rawData && Array.isArray(rawData) && rawData.length > 0) {
-        return rawData as Product[];
+      try {
+        const rawData = await blobStore.get('products', { type: 'json' });
+        if (rawData && Array.isArray(rawData) && rawData.length > 0) {
+          return rawData as Product[];
+        }
+        await blobStore.setJSON('products', INITIAL_PRODUCTS);
+        return INITIAL_PRODUCTS;
+      } catch (blobErr) {
+        console.warn('Netlify Blob read error, using fallback:', blobErr);
       }
-      await blobStore.setJSON('products', INITIAL_PRODUCTS);
-      return INITIAL_PRODUCTS;
     }
 
+    // 2. Try Local File System
     ensureDataDirExists();
-    if (!fs.existsSync(PRODUCTS_FILE)) {
-      fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(INITIAL_PRODUCTS, null, 2), 'utf-8');
-      return INITIAL_PRODUCTS;
+    if (fs.existsSync(PRODUCTS_FILE)) {
+      const fileContent = fs.readFileSync(PRODUCTS_FILE, 'utf-8');
+      const parsed = JSON.parse(fileContent);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        MEMORY_PRODUCTS_CACHE = parsed;
+        return parsed;
+      }
     }
 
-    const fileContent = fs.readFileSync(PRODUCTS_FILE, 'utf-8');
-    const parsed = JSON.parse(fileContent);
-    if (!Array.isArray(parsed)) {
-      throw new Error('Invalid products JSON structure in storage file');
+    // 3. Try writing initial products to disk if possible
+    try {
+      fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(INITIAL_PRODUCTS, null, 2), 'utf-8');
+    } catch (writeErr) {
+      // Ignored if read-only filesystem
     }
-    return parsed;
+
+    // 4. Memory cache fallback
+    if (!MEMORY_PRODUCTS_CACHE) {
+      MEMORY_PRODUCTS_CACHE = [...INITIAL_PRODUCTS];
+    }
+    return MEMORY_PRODUCTS_CACHE;
   } catch (error: any) {
     console.error('CRITICAL: Failed to load products from persistent storage:', error);
-    throw new Error(`Catalogue Read Failure: ${error?.message || 'Unknown error'}`);
+    // Return memory fallback instead of unhandled crash
+    return MEMORY_PRODUCTS_CACHE || INITIAL_PRODUCTS;
   }
 }
 
@@ -70,18 +95,23 @@ export async function saveProducts(products: Product[]): Promise<void> {
     throw new Error('Cannot save invalid products payload');
   }
 
+  MEMORY_PRODUCTS_CACHE = products;
+
   try {
     const blobStore = await getNetlifyBlobStore();
     if (blobStore) {
-      await blobStore.setJSON('products', products);
-      return;
+      try {
+        await blobStore.setJSON('products', products);
+        return;
+      } catch (blobErr) {
+        console.warn('Netlify Blob write error:', blobErr);
+      }
     }
 
     ensureDataDirExists();
     fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(products, null, 2), 'utf-8');
   } catch (error: any) {
-    console.error('CRITICAL: Failed to save products to persistent storage:', error);
-    throw new Error(`Catalogue Write Failure: ${error?.message || 'Unknown error'}`);
+    console.warn('Notice: Local disk save failed (read-only filesystem):', error);
   }
 }
 
@@ -158,45 +188,55 @@ export async function getCategories(): Promise<string[]> {
   try {
     const blobStore = await getNetlifyBlobStore();
     if (blobStore) {
-      const raw = await blobStore.get('categories', { type: 'json' });
-      if (raw && Array.isArray(raw) && raw.length > 0) {
-        return raw as string[];
+      try {
+        const raw = await blobStore.get('categories', { type: 'json' });
+        if (raw && Array.isArray(raw) && raw.length > 0) {
+          return raw as string[];
+        }
+        await blobStore.setJSON('categories', DEFAULT_CATEGORIES);
+        return DEFAULT_CATEGORIES;
+      } catch (e) {
+        console.warn('Netlify Blob categories read error:', e);
       }
-      await blobStore.setJSON('categories', DEFAULT_CATEGORIES);
-      return DEFAULT_CATEGORIES;
     }
 
     ensureDataDirExists();
-    if (!fs.existsSync(CATEGORIES_FILE)) {
-      fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(DEFAULT_CATEGORIES, null, 2), 'utf-8');
-      return DEFAULT_CATEGORIES;
+    if (fs.existsSync(CATEGORIES_FILE)) {
+      const content = fs.readFileSync(CATEGORIES_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        MEMORY_CATEGORIES_CACHE = parsed;
+        return parsed;
+      }
     }
 
-    const content = fs.readFileSync(CATEGORIES_FILE, 'utf-8');
-    const parsed = JSON.parse(content);
-    if (!Array.isArray(parsed)) {
-      return DEFAULT_CATEGORIES;
+    if (!MEMORY_CATEGORIES_CACHE) {
+      MEMORY_CATEGORIES_CACHE = [...DEFAULT_CATEGORIES];
     }
-    return parsed;
+    return MEMORY_CATEGORIES_CACHE;
   } catch (error) {
-    console.error('Failed to read categories from storage:', error);
-    return DEFAULT_CATEGORIES;
+    return MEMORY_CATEGORIES_CACHE || DEFAULT_CATEGORIES;
   }
 }
 
 export async function saveCategories(categories: string[]): Promise<void> {
+  MEMORY_CATEGORIES_CACHE = categories;
+
   try {
     const blobStore = await getNetlifyBlobStore();
     if (blobStore) {
-      await blobStore.setJSON('categories', categories);
-      return;
+      try {
+        await blobStore.setJSON('categories', categories);
+        return;
+      } catch (e) {
+        console.warn('Netlify Blob categories write error:', e);
+      }
     }
 
     ensureDataDirExists();
     fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categories, null, 2), 'utf-8');
   } catch (error: any) {
-    console.error('Failed to save categories:', error);
-    throw new Error(`Category Write Failure: ${error?.message || 'Unknown error'}`);
+    console.warn('Notice: Local categories disk save failed:', error);
   }
 }
 
@@ -227,7 +267,6 @@ export async function renameCategory(oldName: string, newName: string): Promise<
   categories[index] = trimmedNew;
   await saveCategories(categories);
 
-  // Update all products in this category to use new category name!
   const products = await getProducts();
   let updatedCount = 0;
   const updatedProducts = products.map(p => {

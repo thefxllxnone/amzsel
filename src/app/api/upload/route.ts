@@ -2,11 +2,18 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
 
 function ensureUploadDirExists() {
-  if (!fs.existsSync(UPLOAD_DIR)) {
-    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    }
+  } catch (e) {
+    console.warn('Could not create local upload dir (read-only filesystem environment):', e);
   }
 }
 
@@ -16,7 +23,6 @@ export async function POST(request: Request) {
     const file = formData.get('file') as File | null;
     const urlInput = formData.get('url') as string | null;
 
-    // If direct URL provided
     if (urlInput && urlInput.trim()) {
       return NextResponse.json({
         success: true,
@@ -34,21 +40,30 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Sanitize file extension
     const ext = path.extname(file.name) || '.jpg';
     const filename = `img-${Date.now()}-${Math.random().toString(36).substring(2, 8)}${ext}`;
     
-    ensureUploadDirExists();
-    const filePath = path.join(UPLOAD_DIR, filename);
-
-    fs.writeFileSync(filePath, buffer);
-
-    const publicUrl = `/uploads/${filename}`;
-    return NextResponse.json({
-      success: true,
-      url: publicUrl,
-      filename
-    });
+    // In Netlify / Serverless, write to /tmp or return base64 data URI if disk is read-only
+    try {
+      ensureUploadDirExists();
+      const filePath = path.join(UPLOAD_DIR, filename);
+      fs.writeFileSync(filePath, buffer);
+      return NextResponse.json({
+        success: true,
+        url: `/uploads/${filename}`,
+        filename
+      });
+    } catch (fsErr) {
+      // Fallback to data URI if read-only filesystem (Netlify lambda environment)
+      const base64 = buffer.toString('base64');
+      const mime = file.type || 'image/jpeg';
+      const dataUri = `data:${mime};base64,${base64}`;
+      return NextResponse.json({
+        success: true,
+        url: dataUri,
+        filename
+      });
+    }
   } catch (error: any) {
     console.error('API Error POST /api/upload:', error);
     return NextResponse.json(
